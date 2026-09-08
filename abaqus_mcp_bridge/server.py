@@ -19,13 +19,27 @@ from .client import AbaqusBridgeClient
 
 
 def _ensure_gui_plugin() -> None:
-    """Install the GUI plugin silently if not already present."""
+    """Install the GUI plugin silently if not already present.
+
+    NOTE (2026-09-08, Abaqus-2023 port): this legacy auto-install wrote a flat
+    ``abaqus_mcp_gui_plugin.py`` into ``~/abaqus_plugins`` by default. Abaqus
+    2023 loads plugins from BOTH that home dir and the site dir
+    (``E:\\Abaqus2023\\Temp\\abaqus_plugins``), so the flat copy registered the
+    same "Abaqus-Control-MCP" menu as the proper sub-package
+    (AbaqusMcpBridge_1.0.0, installed by install_plugin.bat) -- the duplicate
+    then hijacked Start/port 48152 with a stale template. Disabled by default;
+    only write the flat file when ABAQUS_MCP_PLUGIN_DIR is explicitly set.
+    Prefer install_plugin.bat (sub-package layout) instead.
+    """
+    plugin_dir = os.environ.get("ABAQUS_MCP_PLUGIN_DIR")
+    if not plugin_dir:
+        return  # home flat-copy auto-install disabled (see note above)
     try:
         import shutil
         from importlib import resources
         from pathlib import Path
 
-        target_dir = Path(os.environ.get("ABAQUS_MCP_PLUGIN_DIR", Path.home() / "abaqus_plugins"))
+        target_dir = Path(plugin_dir)
         target_dir.mkdir(parents=True, exist_ok=True)
         target = target_dir / "abaqus_mcp_gui_plugin.py"
 
