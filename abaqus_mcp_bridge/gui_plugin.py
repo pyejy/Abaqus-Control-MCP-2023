@@ -310,13 +310,16 @@ try:
     _probe.write("ascii")
 except TypeError:
     _mcp_patch_stdout()
-elif dg is not None and callable(dg.get("_mcp_probe_stdout_poisoned")):
-    # Same heuristic the fixed executor uses; keeps both layers in lockstep.
-    try:
-        if dg["_mcp_probe_stdout_poisoned"]():
-            _mcp_patch_stdout()
-    except Exception:
-        pass
+else:
+    # io.StringIO accepted byte-str here, but the fixed diagnostics probe is the
+    # authoritative check (it also catches builds that reject only other shapes);
+    # keep both layers in lockstep.
+    if dg is not None and callable(dg.get("_mcp_probe_stdout_poisoned")):
+        try:
+            if dg["_mcp_probe_stdout_poisoned"]():
+                _mcp_patch_stdout()
+        except Exception:
+            pass
 
 # Older staged diagnostics snapshots build capture buffers as raw io.StringIO;
 # their _redirect then swaps our tolerant stdout back to a poisoned one. Wrap
@@ -398,8 +401,13 @@ else:
                        "error_type": "RuntimeError", "recovery": {}}
 payload = {"ok": True, "result": result_envelope}
 
+# Response file is opened as a py2 text file (default ascii codec); writing raw
+# non-ASCII here raises UnicodeEncodeError even though the capture buffers above
+# handled CJK fine. ensure_ascii=True escapes everything to \uXXXX pure ASCII so
+# the on-disk payload round-trips losslessly (json.load on the GUI side undoes
+# the escapes and _send re-encodes to utf-8 for the wire).
 with open(response_path, "w") as handle:
-    json.dump(payload, handle, ensure_ascii=False)
+    json.dump(payload, handle, ensure_ascii=True)
 '''
     else:
         # Minimal fallback: no recovery panel, but run_python still works even
@@ -464,8 +472,9 @@ if error_response[0] is not None:
 else:
     payload = {"ok": True, "result": {"ok": True, "return_value": returned[0], "stdout": cs, "stderr": ce}}
 
+# ascii-safe serialization; see note at the other json.dump site.
 with open(response_path, "w") as handle:
-    json.dump(payload, handle, ensure_ascii=False)
+    json.dump(payload, handle, ensure_ascii=True)
 '''
 
     template = header + core
