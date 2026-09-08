@@ -1,0 +1,31 @@
+[project]
+name = "abaqus-control-mcp"
+version = "1.0.0"
+description = "Abaqus 2023 / Python 2.7 port of the Abaqus-Control-MCP bridge for real-time control of Abaqus/CAE through Claude, Cursor, and other MCP clients (upstream: Whfkl/Abaqus-Control-MCP)."
+requires-python = ">=3.10"
+keywords = ["abaqus", "mcp", "automation", "cae", "finite-element", "claude", "ai"]
+dependencies = [
+    "mcp>=1.0.0",
+    "anyio>=3.0.0",
+]
+
+[project.scripts]
+abaqus-control-mcp-server = "abaqus_mcp_bridge.server:main"
+abaqus-control-check = "abaqus_mcp_bridge.cli:check_main"
+abaqus-control-doctor = "abaqus_mcp_bridge.cli:doctor_main"
+abaqus-control-setup = "abaqus_mcp_bridge.cli:setup_main"
+
+[project.urls]
+Homepage = "https://github.com/pyejy/Abaqus-Control-MCP-2023"
+Issues = "https://github.com/pyejy/Abaqus-Control-MCP-2023/issues"
+Source = "https://github.com/pyejy/Abaqus-Control-MCP-2023"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["abaqus_mcp_bridge"]
