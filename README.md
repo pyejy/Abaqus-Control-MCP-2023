@@ -1,5 +1,10 @@
 # Abaqus-Control-MCP · Abaqus 2023 / Python 2.7 移植版
 
+> **本目录 (`abaqus_mcp_pro`) 是在移植版基础上做过一轮工程整改的独立分支**：新增
+> `get_model_info` / `submit_job` / `read_odb_field` / `read_odb_history` / `extract_kpis`
+> 五个工具，并修掉了 run_python 大返回值撑爆响应的隐患。详见 **[IMPROVEMENTS.md](IMPROVEMENTS.md)**。
+> 建模/后处理的 API 踩坑速查见 **[skills/abaqus-mcp-workflow/SKILL.md](skills/abaqus-mcp-workflow/SKILL.md)**。
+
 > 本地 MCP（Model Context Protocol）桥接器：让你在 **Claude Code / Cursor** 等 MCP 客户端里实时操控 **Abaqus/CAE** —— 发 Python 脚本、读 ODB 结果、看视口截图，全程无需手动点 GUI。
 >
 > **原参考项目（本仓库为它的 Abaqus-2023 兼容移植）：**

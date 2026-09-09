@@ -40,6 +40,7 @@ import difflib
 import inspect
 import io
 import json
+import os
 import re
 import sys
 import traceback
@@ -555,6 +556,89 @@ def jsonable(value):
         }
 
 
+# Max serialized size of a successful run_python return_value before we switch
+# to a down-sampled preview (see safe_return_value). Keeps a script that sets
+# ``result`` to a big array/list from flooding the MCP response and blowing past
+# the 16 MiB socket cap in protocol.py. Overridable via env on the kernel side.
+try:
+    RETURN_VALUE_MAX_BYTES = int(os.environ.get("ABAQUS_MCP_RETURN_MAX", "60000"))
+except Exception:
+    RETURN_VALUE_MAX_BYTES = 60000
+
+
+def _json_size(obj):
+    """Serialized length in chars, or None if obj is not JSON-serializable."""
+    try:
+        return len(json.dumps(obj, ensure_ascii=False))
+    except (TypeError, ValueError):
+        return None
+
+
+def _downsample_list(seq, max_items=200, max_bytes=8000):
+    """Keep a prefix of *seq* within BOTH an item count and a serialized-byte
+    budget; report how many were dropped. Returns (preview_list, n_kept, n_dropped).
+    An element that cannot be measured is counted at 128 chars (bounded worst case).
+    """
+    kept = []
+    size = 0
+    for item in seq:
+        if len(kept) >= max_items:
+            break
+        js = _json_size(item)
+        item_size = js if js is not None else min(len(repr(item)), 128)
+        if size + item_size > max_bytes:
+            break
+        kept.append(item)
+        size += item_size + 1
+    return kept, len(kept), max(0, len(seq) - len(kept))
+
+
+def safe_return_value(value):
+    """Wrap the user's ``result`` for transport, down-sampling oversized payloads.
+
+    Small values pass through unchanged (identical to the old jsonable() path).
+    A list/tuple larger than RETURN_VALUE_MAX_BYTES becomes a compact dict::
+
+        {"__truncated__": True, "total": N, "kind": "list", "returned": k,
+         "dropped": d, "sample": [...]}
+
+    so an LLM sees shape + head/tail instead of megabytes of numbers. Dicts are
+    never silently truncated (that would hide which keys exist); they fall back
+    to jsonable(). This runs inside the Abaqus kernel (Py2.7) -- stdlib only, no
+    f-strings.
+    """
+    jv = jsonable(value)
+    if isinstance(jv, dict) and "repr" in jv and "type" in jv and len(jv) == 2:
+        return jv  # unserializable object -> keep existing {repr,type} envelope
+    size = _json_size(jv)
+    if size is None or size <= RETURN_VALUE_MAX_BYTES:
+        return jv
+    if isinstance(value, (list, tuple)):
+        total = len(value)
+        kind = "list" if isinstance(value, list) else "tuple"
+        sample, n_kept, n_dropped = _downsample_list(value)
+        return {
+            "__truncated__": True,
+            "kind": kind,
+            "total": total,
+            "returned": n_kept,
+            "dropped": n_dropped,
+            "size_bytes": size,
+            "sample": sample,
+            "hint": "result too large (%d bytes); set result to a scalar/KPI or "
+                    "write to file and return the path. Use offset/limit paging "
+                    "via read_odb_field/history for arrays." % size,
+        }
+    # Oversized but not a flat sequence: keep it, flagging so the caller knows.
+    return {
+        "__truncated__": True,
+        "kind": type(value).__name__,
+        "size_bytes": size,
+        "preview": repr(value)[:RETURN_VALUE_MAX_BYTES],
+        "hint": "result too large to serialize safely; reduce it server-side.",
+    }
+
+
 # --------------------------------------------------------------------------- #
 # The top-level error formatter: classifies the exception and builds recovery
 # hints. This is the function both agents call after catching a user error.
@@ -917,9 +1001,19 @@ def _execute_in_namespace_inner(code, namespace, lock=None):
         error_response[0]["stderr"] = captured_stderr
         return error_response[0]
 
+    payload = safe_return_value(returned[0])
+    # Last-resort guard: even the preview can be too big for one socket message.
+    if _json_size(payload) is None or _json_size(payload) > RETURN_VALUE_MAX_BYTES * 3:
+        payload = {
+            "__truncated__": True,
+            "kind": type(returned[0]).__name__,
+            "hint": "result could not be serialized within the size cap; "
+                    "reduce it server-side (return a scalar or write to file).",
+        }
+
     return {
         "ok": True,
-        "return_value": jsonable(returned[0]),
+        "return_value": payload,
         "stdout": captured_stdout,
         "stderr": captured_stderr,
     }
