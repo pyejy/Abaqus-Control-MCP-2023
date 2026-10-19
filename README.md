@@ -1,6 +1,6 @@
 # Abaqus-Control-MCP · Abaqus 2023 / Python 2.7 移植版
 
-> **本目录 (`abaqus_mcp_pro`) 是在移植版基础上做过一轮工程整改的独立分支**：新增
+> 在移植版基础上做过一轮工程整改：新增
 > `get_model_info` / `submit_job` / `read_odb_field` / `read_odb_history` / `extract_kpis`
 > 五个工具，并修掉了 run_python 大返回值撑爆响应的隐患。详见 **[IMPROVEMENTS.md](IMPROVEMENTS.md)**。
 > 建模/后处理的 API 踩坑速查见 **[skills/abaqus-mcp-workflow/SKILL.md](skills/abaqus-mcp-workflow/SKILL.md)**。
@@ -32,6 +32,7 @@ Abaqus/CAE 自带一个 Python 内核，但普通脚本只能在 Abaqus 里跑�
 - `ping` — 探活，返回内核 Python 版本 / 模型 / 视口清单
 - `run_python` — 在 Abaqus 内核里执行任意 Python，捕获 stdout/stderr + 返回值，出错时给**智能诊断**（含可能 key / 属性 / callable 签名建议）
 - `set_workdir` / `monitor_job_status` / `inspect_odb` / `capture_viewport`
+- `get_model_info` / `submit_job` / `read_odb_field` / `read_odb_history` / `extract_kpis`
 - 另配一批 Claude Code 技能（`abaqus-control-check` / `abaqus-control-setup` / `abaqus-control-doctor`）
 
 ---
@@ -39,7 +40,7 @@ Abaqus/CAE 自带一个 Python 内核，但普通脚本只能在 Abaqus 里跑�
 ## 目录速览
 
 ```
-abaqus_link/
+abaqus_mcp_pro/
 ├── abaqus_mcp_bridge/          # Python 源码包(单真源)
 │   ├── server.py / cli.py ...  #   系统侧 Python3,未改动
 │   ├── gui_plugin.py           #   GUI 插件主逻辑(Py2.7-safe)
@@ -50,6 +51,7 @@ abaqus_link/
 ├── install_server.bat          # 安装服务端(mcp + anyio)
 ├── verify_kernel.bat           # 用 Abaqus 内嵌 2.7 编译 / 冒烟验证
 ├── tests/smoke_diagnostics.py  # 2.7-safe 单测
+├── docs/PLUGIN_DIR.md          # 插件该装到哪里（按本机插件目录来）
 ├── pyproject.toml              # 服务端打包(mcp/anyio)
 ├── README.md                   # 本文件(交付总览)
 └── README_2023.md              # 详细移植记录 + 实战踩坑
@@ -75,11 +77,14 @@ claude mcp add abaqus -- python -m abaqus_mcp_bridge.server
 重启 Claude 后 `/mcp` 应看到 `abaqus` ✔ Connected；然后打开 Abaqus/CAE → `Plug-ins → Abaqus-Control-MCP → Start MCP Bridge`。
 
 > 换插件安装目录：`set ABAQUS_MCP_PLUGIN_DIR=你的目录 & install_plugin.bat`
+>
+> **装到哪里？** 每台机器的 Abaqus 插件目录不同，没有通用路径。
+> 详见 **[docs/PLUGIN_DIR.md](docs/PLUGIN_DIR.md)** —— 用 AI 助手装的话，让它自己找即可。
 
 ## 验证是否真的通了
 
 ```bash
-cd abaqus_link
+cd abaqus_mcp_pro
 python -m abaqus_mcp_bridge.cli check      # 期望 ok:true + python: 2.7.15
 ```
 
